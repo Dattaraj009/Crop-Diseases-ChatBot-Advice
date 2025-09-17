@@ -1,0 +1,81 @@
+{
+    "diseases": [
+        {
+            "name": "Red Rot",
+            "scientific_name": "Colletotrichum falcatum",
+            "symptoms": [
+                "Reddish lesions on leaves and stalks",
+                "Reddish discoloration of internal tissues",
+                "Drying and wilting of leaves",
+                "White fungal growth in advanced stages"
+            ],
+            "causes": [
+                "Fungal infection (Colletotrichum falcatum)",
+                "Warm and humid conditions",
+                "Poor field sanitation"
+            ],
+            "treatment": [
+                "Remove and destroy infected plants",
+                "Apply recommended fungicides",
+                "Practice crop rotation",
+                "Use disease-free seed material"
+            ],
+            "prevention": [
+                "Use resistant varieties",
+                "Maintain proper field sanitation",
+                "Avoid waterlogging",
+                "Remove and destroy crop residues"
+            ],
+            "is_curable": true,
+            "severity": "High",
+            "affected_parts": ["Leaves", "Stalks", "Buds"]
+        },
+        {
+            "name": "White Leaf",
+            "scientific_name": "Leifsonia xyli subsp. xyli",
+            "symptoms": [
+                "White or pale yellow streaks on leaves",
+                "Stunted growth",
+                "Reduced tillering",
+                "Shortened internodes"
+            ],
+            "causes": [
+                "Bacterial infection (Leifsonia xyli)",
+                "Use of infected seed material",
+                "Contaminated cutting tools"
+            ],
+            "treatment": [
+                "Rogue out infected plants",
+                "Use hot water treatment for seed material",
+                "Apply recommended bactericides"
+            ],
+            "prevention": [
+                "Use certified disease-free seed material",
+                "Disinfect cutting tools",
+                "Practice crop rotation",
+                "Avoid ratooning infected crops"
+            ],
+            "is_curable": false,
+            "severity": "Very High",
+            "affected_parts": ["Leaves", "Stems"]
+        },
+        {
+            "name": "Normal Leaf",
+            "description": "Healthy sugarcane plant with no signs of disease",
+            "care_guidelines": [
+                "Maintain regular watering schedule",
+                "Ensure proper drainage",
+                "Apply balanced fertilizers",
+                "Monitor for early signs of disease",
+                "Practice crop rotation"
+            ],
+            "is_curable": true,
+            "severity": "None",
+            "optimal_conditions": {
+                "soil_ph": "5.5-6.5",
+                "temperature": "20-35°C",
+                "humidity": "60-80%"
+            }
+        }
+    ]
+}
