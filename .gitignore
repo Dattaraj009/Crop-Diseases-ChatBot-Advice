@@ -1,0 +1,41 @@
+# Byte-code files
+*.pyc
+__pycache__/
+*.pyd
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Editor/IDE specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Operating System generated files
+.DS_Store
+Thumbs.db
+
+# Test and build artifacts
+build/
+dist/
+*.egg-info/
+.coverage
+.tox/
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# Data files (if not meant for version control)
+*.sqlite3
+*.db
+
+# Configuration files (if they contain sensitive info or are specific to local setup)
+config.ini
+.env
