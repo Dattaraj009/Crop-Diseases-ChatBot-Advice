@@ -22,12 +22,12 @@ def create_model():
 
 # Create and save the model
 model = create_model()
-model.save('sugercane1.keras')
-print("Test model created and saved as 'sugercane1.keras'")
+model.save('sugercane2.keras')
+print("Test model created and saved as 'sugercane2.keras'")
 
 # Verify the model can be loaded
 try:
-    loaded_model = tf.keras.models.load_model('sugercane1.keras')
+    loaded_model = tf.keras.models.load_model('sugercane2.keras')
     print("Model loaded successfully!")
     loaded_model.summary()
 except Exception as e:

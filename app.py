@@ -2,6 +2,8 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 import os
+import json
+import re
 import requests
 import base64
 import tensorflow as tf
@@ -11,6 +13,25 @@ from io import BytesIO
 
 # Class names
 CLASS_NAMES = ["Normal leaf", "Red rot", "White leaf"]
+
+# Load knowledge base
+with open('knowledge_base.json', 'r') as f:
+    KNOWLEDGE_BASE = json.load(f)
+
+def get_disease_info(disease_name):
+    """Get information about a disease from the knowledge base"""
+    if not disease_name:
+        return None
+        
+    disease_name_lower = disease_name.lower()
+    for disease in KNOWLEDGE_BASE['diseases']:
+        # Check if the disease name or scientific name contains the search term
+        if (disease_name_lower in disease['name'].lower() or 
+            disease_name_lower in disease.get('scientific_name', '').lower() or
+            any(disease_name_lower in s.lower() for s in disease.get('symptoms', [])) or
+            any(disease_name_lower in c.lower() for c in disease.get('causes', []))):
+            return disease
+    return None
 
 # Image preprocessing
 def preprocess_image(img):
@@ -30,7 +51,7 @@ def create_mock_model():
 
 def load_model():
     """Try to load the model, fall back to mock if not available"""
-    model_path = "sugercane1.keras"
+    model_path = "sugercane2.keras"
     
     # Check if model file exists and is not empty
     if not os.path.exists(model_path) or os.path.getsize(model_path) == 0:
@@ -55,10 +76,10 @@ print("Starting application...")
 model, is_mock = load_model()
 if is_mock:
     print("\nWARNING: Using mock model for predictions.")
-    print("To use a real model, ensure you have a valid 'sugercane1.keras' file.\n")
+    print("To use a real model, ensure you have a valid 'sugercane2.keras' file.\n")
 
 def predict_disease(img):
-    """Predict disease using the trained model or mock model"""
+    """Predict disease using the trained model"""
     try:
         # Preprocess the image
         processed_img = preprocess_image(img)
@@ -69,12 +90,7 @@ def predict_disease(img):
         confidence = float(np.max(predictions[0]))
         
         # Get class name
-        if is_mock:
-            class_name = f"Demo: {CLASS_NAMES[predicted_class_idx]}"
-            # Add some randomness to make it look more realistic
-            confidence = max(0.7, min(0.99, confidence + np.random.uniform(-0.1, 0.1)))
-        else:
-            class_name = CLASS_NAMES[predicted_class_idx]
+        class_name = CLASS_NAMES[predicted_class_idx]
             
         return class_name, confidence
         
@@ -118,7 +134,7 @@ def get_llm_advice(diagnosis):
         return f"Error making prediction: {str(e)}"
 
 def analyze_image(img):
-    """Analyze image and return diagnosis and advice"""
+    """Analyze image and return diagnosis and advice with confidence score"""
     if model is None:
         return "Error: Model not loaded. Please check the logs.", ""
     
@@ -129,7 +145,8 @@ def analyze_image(img):
         # Get advice from LLM
         advice = get_llm_advice(prediction)
         
-        return f"{prediction} (Confidence: {confidence:.2f})", advice
+        # Return prediction with confidence score as percentage
+        return f"{prediction} (Confidence: {confidence*100:.1f}%)", advice
     except Exception as e:
         print(f"Error in analysis: {str(e)}")
         return f"Error: {str(e)}", ""
@@ -141,19 +158,54 @@ with gr.Blocks(title="Crop Health Advisor") as demo:
     Upload an image of your crop to get a diagnosis and care advice.
     """)
     
+    # Custom CSS to ensure labels are visible and make follow-up section resizable
+    custom_css = """
+    /* Style for labels */
+    .gr-form {
+        margin-bottom: 12px !important;
+    }
+    
+    /* Make labels visible */
+    .gr-box label {
+        display: block !important;
+        font-weight: 600 !important;
+        color: #1e293b !important;
+        margin-bottom: 4px !important;
+    }
+    
+    /* Default style for text areas (not resizable) */
+    .gradio-textbox textarea {
+        resize: none !important;
+        min-height: 60px !important;
+        width: 100% !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 4px !important;
+        padding: 8px !important;
+    }
+    
+    /* Make only the follow-up section's response box resizable */
+    #chat_output textarea {
+        resize: vertical !important;
+        min-height: 100px !important;
+        max-height: 500px !important;
+        overflow-y: auto !important;
+    }
+    """
+    demo.css = custom_css
+    
     with gr.Row():
         with gr.Column():
             image_input = gr.Image(type="pil", label="Upload Crop Image")
             submit_btn = gr.Button("Analyze")
         
         with gr.Column():
-            output_diagnosis = gr.Textbox(label="Diagnosis", interactive=False)
-            output_advice = gr.Textbox(label="Care Advice", lines=4, interactive=False)
+            output_diagnosis = gr.Textbox(label="Diagnosis", interactive=False, show_label=True, show_copy_button=True, container=True)
+            output_advice = gr.Textbox(label="Care Advice", lines=4, interactive=False, show_label=True, show_copy_button=True, container=True)
     
     # Chat interface for follow-up questions
     with gr.Accordion("Ask a follow-up question", open=False):
         chat_input = gr.Textbox(label="Your question", placeholder="Ask about treatment options...")
-        chat_output = gr.Textbox(label="Response", interactive=False)
+        chat_output = gr.Textbox(label="Response", interactive=False, elem_id="chat_output")
         chat_btn = gr.Button("Ask")
     
     # Define button actions
@@ -164,20 +216,56 @@ with gr.Blocks(title="Crop Health Advisor") as demo:
     )
     
     def respond_to_question(question, diagnosis):
-        """Generate a response to the user's question using the LLM"""
-        if not diagnosis:
+        """Generate a response to the user's question using the knowledge base"""
+        if not diagnosis or 'error' in diagnosis.lower():
             return "Please analyze an image first so I can provide relevant advice."
         
         try:
             # Get the base diagnosis without the confidence score
             base_diagnosis = diagnosis.split('(')[0].strip()
             
-            # If the question is empty or very short, just get general advice
-            if not question or len(question.strip()) < 3:
-                return get_llm_advice(base_diagnosis)
-                
-            # Otherwise, include the question in the prompt
-            return get_llm_advice(f"{base_diagnosis}. Question: {question}")
+            # Get disease info from knowledge base using the full diagnosis text
+            disease_info = get_disease_info(base_diagnosis)
+            
+            # If not found, try common disease keywords
+            if not disease_info:
+                if 'red' in base_diagnosis.lower():
+                    disease_info = get_disease_info('Red Rot')
+                elif 'white' in base_diagnosis.lower():
+                    disease_info = get_disease_info('White Leaf')
+                elif 'normal' in base_diagnosis.lower():
+                    disease_info = get_disease_info('Normal Leaf')
+            
+            # If no disease info found, return simple message
+            if not disease_info:
+                return "I don't have specific information about this disease."
+            
+            # Prepare context from knowledge base
+            context = {
+                'name': disease_info.get('name', ''),
+                'scientific_name': disease_info.get('scientific_name', ''),
+                'symptoms': disease_info.get('symptoms', []),
+                'causes': disease_info.get('causes', []),
+                'treatment': disease_info.get('treatment', []),
+                'prevention': disease_info.get('prevention', []),
+                'severity': disease_info.get('severity', ''),
+                'is_curable': disease_info.get('is_curable', False)
+            }
+            
+            # Convert context to string for the LLM
+            context_str = json.dumps(context, indent=2)
+            
+            # Create prompt for the LLM
+            prompt = f"""
+            Based on this disease information: {context_str}
+            
+            Answer this question in one short sentence: {question}
+            
+            Only provide the direct answer with no additional text, explanations, or formatting.
+            """
+            
+            # Get response from LLM
+            return get_llm_advice(prompt)
             
         except Exception as e:
             print(f"Error generating response: {str(e)}")
