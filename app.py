@@ -41,42 +41,29 @@ def preprocess_image(img):
     img_array = np.expand_dims(img_array, axis=0)
     return preprocess_input(img_array)
 
-def create_mock_model():
-    """Create a simple mock model for demo purposes"""
-    class MockModel:
-        def predict(self, x):
-            # Return random predictions for demo
-            return np.random.rand(1, 3)  # 3 classes
-    return MockModel()
-
 def load_model():
-    """Try to load the model, fall back to mock if not available"""
+    """Load the trained model"""
     model_path = "sugercane2.keras"
     
-    # Check if model file exists and is not empty
     if not os.path.exists(model_path) or os.path.getsize(model_path) == 0:
-        print(f"Model file {model_path} not found or is empty.")
-        return create_mock_model(), True  # Return mock model
+        raise FileNotFoundError(f"Model file {model_path} not found or is empty. Please ensure the model file exists.")
     
     try:
         print(f"Loading model from {model_path}...")
         model = tf.keras.models.load_model(model_path, compile=False)
         print("Model loaded successfully!")
-        return model, False  # Return real model
+        return model
     except Exception as e:
         print(f"Error loading model: {str(e)}")
         print("\nTroubleshooting steps:")
         print("1. Make sure the model file is not corrupted")
-        print("2. Try re-saving the model with: model.save('sugercane1.keras')")
+        print("2. Try re-saving the model with: model.save('sugercane2.keras')")
         print("3. Check TensorFlow version compatibility")
-        return create_mock_model(), True  # Fall back to mock model
+        raise
 
 # Load the model when the app starts
 print("Starting application...")
-model, is_mock = load_model()
-if is_mock:
-    print("\nWARNING: Using mock model for predictions.")
-    print("To use a real model, ensure you have a valid 'sugercane2.keras' file.\n")
+model = load_model()
 
 def predict_disease(img):
     """Predict disease using the trained model"""
@@ -102,16 +89,37 @@ def predict_disease(img):
 def get_llm_advice(diagnosis):
     """Get advice from LLM based on the diagnosis"""
     try:
-        # Prepare the prompt
-        prompt = f"""You are an expert in plant pathology. Provide specific care advice for a plant with the following condition: {diagnosis}.
-        
-        Your response should include:
-        1. A brief description of the condition
-        2. Recommended treatment steps
-        3. Preventive measures
-        4. When to consult a professional
-        
-        Be concise but thorough in your advice."""
+        # Prepare the prompt based on whether it's a normal leaf or disease
+        if "normal" in diagnosis.lower():
+            prompt = """You are a sugarcane cultivation expert. Provide a SINGLE, COMPLETE response for a healthy sugarcane plant. 
+            
+            RULES:
+            - DO NOT ask any questions
+            - DO NOT request additional information
+            - Provide ALL necessary information in this response
+            - Keep it under 250 words
+            - Use clear section headers
+            - Be specific to sugarcane
+            
+            FORMAT:
+            ✅ **Healthy Sugarcane Plant**
+            
+            ⚠️ **Watch For**
+            - [key warning signs]
+            
+            Remember: This is a COMPLETE response. Do not ask for more information.
+            """
+        else:
+            prompt = f"""You are an expert in plant pathology. Provide specific care advice for a plant with the following condition: {diagnosis}.
+            
+            Your response should be factual and practical, including:
+            1. A brief description of the condition
+            2. Recommended treatment steps
+            3. Preventive measures
+            4. When to consult a professional
+            
+            Be concise but thorough in your advice. If you're not certain about the diagnosis, say so."""
+
         
         # Prepare the request to Ollama
         data = {
@@ -216,56 +224,77 @@ with gr.Blocks(title="Crop Health Advisor") as demo:
     )
     
     def respond_to_question(question, diagnosis):
-        """Generate a response to the user's question using the knowledge base"""
-        if not diagnosis or 'error' in diagnosis.lower():
+        """Generate a response to the user's question using the knowledge base and LLM"""
+        if not diagnosis:
             return "Please analyze an image first so I can provide relevant advice."
         
         try:
             # Get the base diagnosis without the confidence score
             base_diagnosis = diagnosis.split('(')[0].strip()
             
-            # Get disease info from knowledge base using the full diagnosis text
+            # If the question is empty or very short, ask for more details
+            if not question or len(question.strip()) < 3:
+                return "Please ask a specific question about the diagnosis or treatment options."
+            
+            # Get disease information from knowledge base
             disease_info = get_disease_info(base_diagnosis)
             
-            # If not found, try common disease keywords
-            if not disease_info:
-                if 'red' in base_diagnosis.lower():
-                    disease_info = get_disease_info('Red Rot')
-                elif 'white' in base_diagnosis.lower():
-                    disease_info = get_disease_info('White Leaf')
-                elif 'normal' in base_diagnosis.lower():
-                    disease_info = get_disease_info('Normal Leaf')
+            # Common question patterns and their corresponding responses
+            question_lower = question.lower()
             
-            # If no disease info found, return simple message
-            if not disease_info:
-                return "I don't have specific information about this disease."
+            if disease_info:
+                # Handle specific question types using knowledge base
+                if any(q in question_lower for q in ['cure', 'treat', 'treatment', 'solution']):
+                    if 'treatment' in disease_info:
+                        return "\n".join(["✅ Treatment options:"] + [f"• {t}" for t in disease_info['treatment']])
+                
+                elif any(q in question_lower for q in ['prevent', 'prevention', 'avoid']):
+                    if 'prevention' in disease_info:
+                        return "\n".join(["🛡️ Prevention measures:"] + [f"• {p}" for p in disease_info['prevention']])
+                
+                elif any(q in question_lower for q in ['symptom', 'sign', 'look like']):
+                    if 'symptoms' in disease_info:
+                        return "\n".join(["⚠️ Common symptoms:"] + [f"• {s}" for s in disease_info['symptoms']])
+                
+                elif any(q in question_lower for q in ['cause', 'reason', 'why']):
+                    if 'causes' in disease_info:
+                        return "\n".join(["🔍 Possible causes:"] + [f"• {c}" for c in disease_info['causes']])
+                
+                elif 'curable' in question_lower:
+                    status = "Yes" if disease_info.get('is_curable', False) else "No"
+                    return f"Curable: {status}. " + ("Early treatment improves success rates." if status == "Yes" else "Focus on prevention and management.")
             
-            # Prepare context from knowledge base
-            context = {
-                'name': disease_info.get('name', ''),
-                'scientific_name': disease_info.get('scientific_name', ''),
-                'symptoms': disease_info.get('symptoms', []),
-                'causes': disease_info.get('causes', []),
-                'treatment': disease_info.get('treatment', []),
-                'prevention': disease_info.get('prevention', []),
-                'severity': disease_info.get('severity', ''),
-                'is_curable': disease_info.get('is_curable', False)
-            }
+            # If no specific pattern matched or disease not found, use LLM with context
+            context = json.dumps(disease_info, indent=2) if disease_info else "No specific information available"
             
-            # Convert context to string for the LLM
-            context_str = json.dumps(context, indent=2)
+            prompt = f"""You are a sugarcane disease expert. Use the following information to answer the question.
             
-            # Create prompt for the LLM
-            prompt = f"""
-            Based on this disease information: {context_str}
+            Disease: {base_diagnosis}
+            Context: {context}
             
-            Answer this question in one short sentence: {question}
+            Question: {question}
             
-            Only provide the direct answer with no additional text, explanations, or formatting.
+            Guidelines:
+            - Be specific and concise (under 150 words)
+            - Only use information from the provided context
+            - If the question can't be answered from context, say so
+            - Do not make up information
+            - Format lists with bullet points
+            - Do not ask follow-up questions
             """
             
-            # Get response from LLM
-            return get_llm_advice(prompt)
+            # Make the API call to Ollama
+            data = {
+                "model": "gemma3",
+                "prompt": prompt,
+                "stream": False,
+                "max_tokens": 300
+            }
+            
+            response = requests.post("http://localhost:11434/api/generate", json=data)
+            response.raise_for_status()
+            result = response.json()
+            return result.get("response", "I couldn't generate a response. Please try again.")
             
         except Exception as e:
             print(f"Error generating response: {str(e)}")
